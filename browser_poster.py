@@ -9,6 +9,20 @@ console = Console()
 
 SESSIONS_DIR = Path("sessions")
 
+_CHROMIUM_CANDIDATES = [
+    "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/chromium",
+    "/usr/bin/google-chrome",
+]
+
+
+def _find_chromium() -> str | None:
+    for path in _CHROMIUM_CANDIDATES:
+        if Path(path).exists():
+            return path
+    return None
+
 
 def _save_cookies(context, name: str):
     SESSIONS_DIR.mkdir(exist_ok=True)
@@ -107,8 +121,19 @@ def post_x_thread(x_post: str) -> list[str]:
     tweets = [t.strip() for t in x_post.split("---") if t.strip()]
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
-        context = browser.new_context()
+        browser = p.chromium.launch(
+            headless=False,
+            executable_path=_find_chromium(),
+            args=["--disable-blink-features=AutomationControlled"],
+        )
+        context = browser.new_context(
+            ignore_https_errors=True,
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/141.0.0.0 Safari/537.36"
+            ),
+        )
         _load_cookies(context, "x")
 
         page = context.new_page()
@@ -174,8 +199,19 @@ def post_note_article(title: str, body: str, price: int, publish: bool = False) 
         )
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
-        context = browser.new_context()
+        browser = p.chromium.launch(
+            headless=False,
+            executable_path=_find_chromium(),
+            args=["--disable-blink-features=AutomationControlled"],
+        )
+        context = browser.new_context(
+            ignore_https_errors=True,
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/141.0.0.0 Safari/537.36"
+            ),
+        )
         _load_cookies(context, "note")
 
         page = context.new_page()

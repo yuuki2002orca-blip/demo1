@@ -10,6 +10,20 @@ console = Console()
 SESSIONS_DIR = Path("sessions")
 COOKIES_FILE = SESSIONS_DIR / "claude_cookies.json"
 
+_CHROMIUM_CANDIDATES = [
+    "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/chromium",
+    "/usr/bin/google-chrome",
+]
+
+
+def _find_chromium() -> str | None:
+    for path in _CHROMIUM_CANDIDATES:
+        if Path(path).exists():
+            return path
+    return None  # let Playwright use its default (may fail if not installed)
+
 PROMPT_TEMPLATE = """「{topic}」について最新情報をウェブで検索・リサーチして、
 noteに掲載できる高品質なまとめ記事を作成してください。
 
@@ -148,13 +162,24 @@ def generate_article(topic: str) -> dict:
     prompt = PROMPT_TEMPLATE.format(topic=topic)
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
-        context = browser.new_context()
+        browser = p.chromium.launch(
+            headless=False,
+            executable_path=_find_chromium(),
+            args=["--disable-blink-features=AutomationControlled"],
+        )
+        context = browser.new_context(
+            ignore_https_errors=True,
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/141.0.0.0 Safari/537.36"
+            ),
+        )
         _load_cookies(context)
 
         page = context.new_page()
-        page.goto("https://claude.ai/new", wait_until="domcontentloaded")
-        time.sleep(2)
+        page.goto("https://claude.ai/new", wait_until="domcontentloaded", timeout=30000)
+        time.sleep(3)
 
         if not _is_logged_in(page):
             console.print(
