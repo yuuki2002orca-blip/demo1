@@ -1,5 +1,6 @@
 """Generate articles by automating claude.ai in a browser (no API key needed)."""
 import json
+import os
 import time
 from pathlib import Path
 
@@ -22,7 +23,12 @@ def _find_chromium() -> str | None:
     for path in _CHROMIUM_CANDIDATES:
         if Path(path).exists():
             return path
-    return None  # let Playwright use its default (may fail if not installed)
+    return None
+
+
+def _has_display() -> bool:
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
 
 PROMPT_TEMPLATE = """「{topic}」について最新情報をウェブで検索・リサーチして、
 noteに掲載できる高品質なまとめ記事を作成してください。
@@ -52,7 +58,7 @@ def _save_cookies(context):
     COOKIES_FILE.write_text(json.dumps(context.cookies(), ensure_ascii=False))
 
 
-def _load_cookies(context):
+def _load_cookies(context) -> bool:
     if COOKIES_FILE.exists():
         try:
             context.add_cookies(json.loads(COOKIES_FILE.read_text()))
@@ -64,13 +70,10 @@ def _load_cookies(context):
 
 def _is_logged_in(page) -> bool:
     try:
-        page.wait_for_selector('[data-testid="user-menu"]', timeout=4000)
-        return True
-    except Exception:
-        pass
-    try:
-        page.wait_for_selector('div[contenteditable="true"]', timeout=4000)
-        return True
+        page.wait_for_selector('div[contenteditable="true"]', timeout=6000)
+        # If we see the input box we're on the chat page = logged in
+        if "claude.ai" in page.url and "login" not in page.url:
+            return True
     except Exception:
         pass
     return False
@@ -85,20 +88,41 @@ def _find_input(page):
         loc = page.locator(selector)
         if loc.count() > 0:
             return loc.first
-    raise RuntimeError("入力欄が見つかりません。claude.ai の画面を確認してください。")
+    raise RuntimeError("入力欄が見つかりません")
+
+
+def _type_prompt(page, prompt: str, headless: bool):
+    input_box = _find_input(page)
+    input_box.click()
+    time.sleep(0.3)
+
+    if headless:
+        # In headless mode inject text directly via JS into ProseMirror
+        page.evaluate("""(text) => {
+            const el = document.querySelector('div[contenteditable="true"]');
+            if (!el) return;
+            el.focus();
+            document.execCommand('selectAll', false, null);
+            document.execCommand('insertText', false, text);
+        }""", prompt)
+    else:
+        # Headed: use clipboard paste (most reliable for Japanese)
+        page.evaluate(f"navigator.clipboard.writeText({json.dumps(prompt)})")
+        page.keyboard.press("Control+v")
+
+    time.sleep(0.5)
+    page.keyboard.press("Enter")
 
 
 def _wait_for_completion(page, timeout: int = 300) -> str:
-    """Poll until Claude stops generating. Returns the last assistant message text."""
-    console.print("  [dim]生成中...[/dim]", end="")
-    time.sleep(4)  # give streaming time to start
+    console.print("  [dim]生成中[/dim]", end="")
+    time.sleep(5)
 
     last_text = ""
     stable_count = 0
     deadline = time.time() + timeout
 
     while time.time() < deadline:
-        # Try multiple selectors for the assistant message
         text = ""
         for selector in [
             '[data-message-author-role="assistant"]',
@@ -112,7 +136,7 @@ def _wait_for_completion(page, timeout: int = 300) -> str:
 
         if text and text == last_text:
             stable_count += 1
-            if stable_count >= 5:  # stable for ~2.5s
+            if stable_count >= 6:
                 console.print(" [green]完了[/green]")
                 return text
         else:
@@ -153,19 +177,23 @@ def generate_article(topic: str) -> dict:
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
+        raise RuntimeError("pip install playwright && python -m playwright install chromium")
+
+    headless = not _has_display()
+
+    if headless and not COOKIES_FILE.exists():
         raise RuntimeError(
-            "playwright が未インストールです:\n"
-            "  pip install playwright\n"
-            "  playwright install chromium"
+            "ヘッドレス環境ではログイン済みクッキーが必要です。\n"
+            "  python main.py login  を実行してセットアップしてください。"
         )
 
     prompt = PROMPT_TEMPLATE.format(topic=topic)
 
     with sync_playwright() as p:
         browser = p.chromium.launch(
-            headless=False,
+            headless=headless,
             executable_path=_find_chromium(),
-            args=["--disable-blink-features=AutomationControlled"],
+            args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
         )
         context = browser.new_context(
             ignore_https_errors=True,
@@ -181,7 +209,7 @@ def generate_article(topic: str) -> dict:
         page.goto("https://claude.ai/new", wait_until="domcontentloaded", timeout=30000)
         time.sleep(3)
 
-        if not _is_logged_in(page):
+        if not headless and not _is_logged_in(page):
             console.print(
                 "\n[bold yellow]Claude にログインしてください。[/bold yellow]\n"
                 "ブラウザでログインが完了したら [bold]Enter[/bold] を押してください... "
@@ -191,18 +219,9 @@ def generate_article(topic: str) -> dict:
             page.goto("https://claude.ai/new", wait_until="domcontentloaded")
             time.sleep(2)
 
-        input_box = _find_input(page)
-        input_box.click()
-
-        # clipboard paste is most reliable for Japanese text
-        context.grant_permissions(["clipboard-read", "clipboard-write"])
-        page.evaluate(f"navigator.clipboard.writeText({json.dumps(prompt)})")
-        page.keyboard.press("Control+v")
-        time.sleep(0.5)
-        page.keyboard.press("Enter")
-
+        _type_prompt(page, prompt, headless=headless)
         response_text = _wait_for_completion(page)
-        _save_cookies(context)  # refresh session
+        _save_cookies(context)
         browser.close()
 
     return _parse_article(response_text, topic)

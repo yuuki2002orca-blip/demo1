@@ -9,6 +9,8 @@ claude.ai でニュースをリサーチしてnote記事を量産し、Xで集�
   ③noteは1つ1980円ぐらいに設定
   ④過去の記事が読めるサブスクも設ける
 """
+import json
+import os
 import sys
 from pathlib import Path
 from datetime import datetime
@@ -19,6 +21,8 @@ from rich.panel import Panel
 from rich.table import Table
 
 console = Console()
+
+SESSIONS_DIR = Path("sessions")
 
 
 @click.group()
@@ -217,6 +221,85 @@ def batch(topics_file, output_dir, note_price, sub_price, post, note_publish):
     console.print(f"\n[bold green]🎉 バッチ処理完了！[/bold green]")
     console.print(f"  成功: {success}件 / 失敗: {failed}件")
     console.print(f"  出力先: {output_dir}/")
+
+
+@cli.command()
+def login():
+    """各サービスにログインしてクッキーを保存します（初回セットアップ）
+
+    ディスプレイがある環境: ブラウザが開くのでログインしてください。
+    ヘッドレスサーバー環境: ブラウザ拡張機能でクッキーをエクスポートする手順を表示します。
+    """
+    has_display = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
+    if has_display:
+        _login_headed()
+    else:
+        _login_headless_guide()
+
+
+def _login_headed():
+    """Open browsers interactively for login on a machine with a display."""
+    from playwright.sync_api import sync_playwright
+    from browser_claude import _find_chromium, _save_cookies as _save_claude
+    from browser_poster import _save_cookies as _save_poster, _new_context
+
+    SESSIONS_DIR.mkdir(exist_ok=True)
+    launch_kwargs = dict(
+        headless=False,
+        executable_path=_find_chromium(),
+        args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
+    )
+
+    services = [
+        ("Claude (claude.ai)", "https://claude.ai", "claude"),
+        ("X (Twitter)", "https://x.com/login", "x"),
+        ("note.com", "https://note.com/login", "note"),
+    ]
+
+    with sync_playwright() as p:
+        for name, url, key in services:
+            console.print(f"\n[bold yellow]{name} にログインしてください...[/bold yellow]")
+            browser = p.chromium.launch(**launch_kwargs)
+            ctx = browser.new_context(ignore_https_errors=True)
+            page = ctx.new_page()
+            page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            console.print(f"  ブラウザが開きました。ログイン完了後 [bold]Enter[/bold] を押してください... ", end="")
+            input()
+            SESSIONS_DIR.mkdir(exist_ok=True)
+            (SESSIONS_DIR / f"{key}_cookies.json").write_text(
+                json.dumps(ctx.cookies(), ensure_ascii=False)
+            )
+            console.print(f"  [green]✅ {name} のクッキーを保存しました[/green]")
+            browser.close()
+
+    console.print("\n[bold green]✅ セットアップ完了！[/bold green]")
+    console.print("  python main.py generate \"トピック\" --post  で実行できます。")
+
+
+def _login_headless_guide():
+    """Print instructions for exporting cookies in a headless environment."""
+    console.print(Panel(
+        "[bold]ヘッドレス環境でのクッキーセットアップ手順[/bold]\n\n"
+        "お使いのPC（Windowsなど）のChrome/Edgeで以下を行ってください:\n\n"
+        "[bold cyan]1. Chrome拡張機能をインストール[/bold cyan]\n"
+        "   Chrome ウェブストアで [bold]\"Cookie-Editor\"[/bold] を検索してインストール\n"
+        "   （作者: cgagnier）\n\n"
+        "[bold cyan]2. claude.ai のクッキーをエクスポート[/bold cyan]\n"
+        "   ① https://claude.ai にログイン\n"
+        "   ② アドレスバー右の Cookie-Editor アイコンをクリック\n"
+        "   ③ [Export] → [Export as JSON] をクリックでコピー\n"
+        f"   ④ このサーバーの [bold]sessions/claude_cookies.json[/bold] に保存\n\n"
+        "[bold cyan]3. X (Twitter) のクッキーをエクスポート[/bold cyan]\n"
+        "   ① https://x.com にログイン → 同様に Export as JSON\n"
+        f"   ② [bold]sessions/x_cookies.json[/bold] に保存\n\n"
+        "[bold cyan]4. note.com のクッキーをエクスポート[/bold cyan]\n"
+        "   ① https://note.com にログイン → 同様に Export as JSON\n"
+        f"   ② [bold]sessions/note_cookies.json[/bold] に保存\n\n"
+        "[dim]sessions/ フォルダがなければ mkdir sessions で作成してください[/dim]",
+        title="[bold]🔑 初回セットアップ[/bold]",
+        border_style="yellow",
+    ))
 
 
 if __name__ == "__main__":
