@@ -241,8 +241,7 @@ def login():
 def _login_headed():
     """Open browsers interactively for login on a machine with a display."""
     from playwright.sync_api import sync_playwright
-    from browser_claude import _find_chromium, _save_cookies as _save_claude
-    from browser_poster import _save_cookies as _save_poster, _new_context
+    from browser_claude import _find_chromium
 
     SESSIONS_DIR.mkdir(exist_ok=True)
     launch_kwargs = dict(
@@ -274,7 +273,7 @@ def _login_headed():
             browser.close()
 
     console.print("\n[bold green]✅ セットアップ完了！[/bold green]")
-    console.print("  python main.py generate \"トピック\" --post  で実行できます。")
+    console.print('  python main.py generate "トピック" --post  で実行できます。')
 
 
 def _login_headless_guide():
@@ -283,19 +282,19 @@ def _login_headless_guide():
         "[bold]ヘッドレス環境でのクッキーセットアップ手順[/bold]\n\n"
         "お使いのPC（Windowsなど）のChrome/Edgeで以下を行ってください:\n\n"
         "[bold cyan]1. Chrome拡張機能をインストール[/bold cyan]\n"
-        "   Chrome ウェブストアで [bold]\"Cookie-Editor\"[/bold] を検索してインストール\n"
+        '   Chrome ウェブストアで [bold]"Cookie-Editor"[/bold] を検索してインストール\n'
         "   （作者: cgagnier）\n\n"
         "[bold cyan]2. claude.ai のクッキーをエクスポート[/bold cyan]\n"
         "   ① https://claude.ai にログイン\n"
         "   ② アドレスバー右の Cookie-Editor アイコンをクリック\n"
         "   ③ [Export] → [Export as JSON] をクリックでコピー\n"
-        f"   ④ このサーバーの [bold]sessions/claude_cookies.json[/bold] に保存\n\n"
+        "   ④ このサーバーの [bold]sessions/claude_cookies.json[/bold] に保存\n\n"
         "[bold cyan]3. X (Twitter) のクッキーをエクスポート[/bold cyan]\n"
         "   ① https://x.com にログイン → 同様に Export as JSON\n"
-        f"   ② [bold]sessions/x_cookies.json[/bold] に保存\n\n"
+        "   ② [bold]sessions/x_cookies.json[/bold] に保存\n\n"
         "[bold cyan]4. note.com のクッキーをエクスポート[/bold cyan]\n"
         "   ① https://note.com にログイン → 同様に Export as JSON\n"
-        f"   ② [bold]sessions/note_cookies.json[/bold] に保存\n\n"
+        "   ② [bold]sessions/note_cookies.json[/bold] に保存\n\n"
         "[dim]sessions/ フォルダがなければ mkdir sessions で作成してください[/dim]",
         title="[bold]🔑 初回セットアップ[/bold]",
         border_style="yellow",

@@ -71,7 +71,6 @@ def _load_cookies(context) -> bool:
 def _is_logged_in(page) -> bool:
     try:
         page.wait_for_selector('div[contenteditable="true"]', timeout=6000)
-        # If we see the input box we're on the chat page = logged in
         if "claude.ai" in page.url and "login" not in page.url:
             return True
     except Exception:
@@ -97,7 +96,6 @@ def _type_prompt(page, prompt: str, headless: bool):
     time.sleep(0.3)
 
     if headless:
-        # In headless mode inject text directly via JS into ProseMirror
         page.evaluate("""(text) => {
             const el = document.querySelector('div[contenteditable="true"]');
             if (!el) return;
@@ -106,7 +104,6 @@ def _type_prompt(page, prompt: str, headless: bool):
             document.execCommand('insertText', false, text);
         }""", prompt)
     else:
-        # Headed: use clipboard paste (most reliable for Japanese)
         page.evaluate(f"navigator.clipboard.writeText({json.dumps(prompt)})")
         page.keyboard.press("Control+v")
 

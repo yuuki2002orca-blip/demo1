@@ -76,10 +76,6 @@ def _require_cookies(name: str):
         )
 
 
-# ---------------------------------------------------------------------------
-# X (Twitter)
-# ---------------------------------------------------------------------------
-
 def _x_is_logged_in(page) -> bool:
     try:
         page.wait_for_selector('[data-testid="SideNav_AccountSwitcher_Button"]', timeout=5000)
@@ -175,10 +171,6 @@ def post_x_thread(x_post: str) -> list[str]:
     return urls
 
 
-# ---------------------------------------------------------------------------
-# note.com
-# ---------------------------------------------------------------------------
-
 def _note_is_logged_in(page) -> bool:
     try:
         page.wait_for_selector('[data-e2e="header-user-icon"]', timeout=5000)
@@ -223,7 +215,6 @@ def post_note_article(title: str, body: str, price: int, publish: bool = False) 
         page.goto("https://note.com/notes/new", wait_until="domcontentloaded", timeout=30000)
         time.sleep(3)
 
-        # Title
         title_input = page.locator('[placeholder="記事タイトル"]')
         if title_input.count() == 0:
             title_input = page.locator('input[type="text"]').first
@@ -231,7 +222,6 @@ def post_note_article(title: str, body: str, price: int, publish: bool = False) 
         title_input.fill(title)
         time.sleep(0.5)
 
-        # Body — inject via JS for headless, clipboard for headed
         body_area = page.locator('.ProseMirror[contenteditable="true"]')
         if body_area.count() == 0:
             body_area = page.locator('[contenteditable="true"]').last
@@ -250,7 +240,6 @@ def post_note_article(title: str, body: str, price: int, publish: bool = False) 
             page.keyboard.press("Control+v")
         time.sleep(1)
 
-        # Price setting
         try:
             settings_btn = page.locator(
                 'button:has-text("販売設定"), button:has-text("有料"), [aria-label*="設定"]'
@@ -271,7 +260,6 @@ def post_note_article(title: str, body: str, price: int, publish: bool = False) 
         except Exception as e:
             console.print(f"  [yellow]⚠️  価格設定をスキップ: {e}[/yellow]")
 
-        # Publish or draft
         if publish:
             page.locator('button:has-text("公開"), button:has-text("投稿")').first.wait_for(timeout=8000)
             page.locator('button:has-text("公開"), button:has-text("投稿")').first.click()
